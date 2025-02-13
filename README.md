@@ -1,0 +1,2 @@
+# Emotion_recognition_Hormonal_contraceptives_analysis
+Data analysis for bachelors project 
