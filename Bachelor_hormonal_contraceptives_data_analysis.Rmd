@@ -1,0 +1,758 @@
+---
+title: "bachelor"
+author: "Liv & Ane"
+date: "2024-10-22"     
+output: html_document  
+--- 
+
+## VIGTIGT - tjek inden afleverer 
+**HUSK at kopiere det andre plot-chunks ind her de rigtige steder HVIS vi ændrer title, y-akse mm.)!!!!
+           
+   
+  
+# Setup & loading data
+
+```{r setup, include=FALSE}  
+# Setup
+knitr::opts_chunk$set(echo = TRUE)  
+```
+
+```{r}
+# Loading packages
+library(pacman)
+p_load(tidyverse, ggplot2, dplyr, reshape2, RColorBrewer, ggpubr,lme4,lmerTest, tidyr, dplyr, emmeans, nnet, patchwork, cowplot, MASS,car) 
+```
+
+```{r} 
+# Loading data  
+df <- read.csv("data_4dec.csv", sep = ";", header = TRUE)  
+```
+
+# Cleaning data
+
+```{r}
+# Renaming columns 
+df <- df %>%
+  rename(test = "A101", id = "A103_01", age = "CC05_20", education_level = "CC06", consent = "BB03", 
+         
+         any_mental_disorder = "CC14", which_mental_disorder = "CC15", depression = "CC15_01", anxiety ="CC15_02", ocd ="CC15_03", adhd_add = "CC15_04", autism ="CC15_05", schizophrenia ="CC15_06", ptsd = "CC15_07", other_disorders ="CC15_08", answer_round = "BB08", answer_again = "EE01",
+         
+         which_hc = "CC02", on_off_hc = "CC17", type_of_COC = "CC09", days_since_last_period = "CC19_01", time_on_hc ="CC20", hc_less_three_months ="CC20_06", hc_three_to_six_months ="CC20_01", hc_six_to_year ="CC20_02", hc_one_to_two_years ="CC20_03", hc_two_to_five_years ="CC20_04", hc_more_than_10_years ="CC20_05", hc_five_to_ten_years = "CC20_07", which_hc_before = "CC24", hc_before_yn = "CC21", type_of_COC_before = "CC23", how_long_since_hc_before = "CC22", active_inactive_hc = "CC25",
+         
+         empathy_q2 = "DD07_20", empathy_q3_r = "DD07_21", empathy_q4_r = "DD07_01", empathy_q6 ="DD07_02", empathy_q8 = "DD07_03", empathy_q9 = "DD07_04", empathy_q10 = "DD07_05", empathy_q11 = "DD07_06", empathy_q13_r = "DD07_07", empathy_q14_r = "DD07_08", empathy_q15_r = "DD07_09", empathy_q17 = "DD07_10", empathy_q18_r = "DD07_11", empathy_q19_r = "DD07_12", empathy_q20 = "DD07_13", empathy_q21 = "DD07_14", empathy_q22 = "DD07_15", empathy_q24 = "DD07_16", empathy_q25 = "DD07_17" , empathy_q27 = "DD07_18", empathy_q28 = "DD07_19", 
+         
+         mood_slider = "FF06_01", wellbeing_q1 = "FF07_01", wellbeing_q1 = "FF07_01", wellbeing_q2 = "FF07_02", wellbeing_q3 = "FF07_03", wellbeing_q4 = "FF07_04", wellbeing_q5 = "FF07_05",
+         
+         track_period = "CC10", regular_period = "CC11", period_phase = "CC18", time_sum = "TIME_SUM")
+```
+
+```{r}
+# Changing the id's to lower case 
+df$id <- as.factor(df$id)  
+df$id <- tolower(df$id)   
+```
+
+```{r}
+# Turn all NA values into 1 in the column answer_round 
+df$answer_round[is.na(df$answer_round)] <- 1
+
+# Overview of the three answer rounds
+table(df$answer_round)  
+```
+
+
+# Exclusion criterias    
+
+```{r}
+# Removing cases where...  
+
+# Mood-rating is not answered 
+df <- df %>% filter(!is.na(mood_slider)) 
+
+# Contraceptive implant   
+df <- df %>% filter(which_hc != 7 | is.na(which_hc))
+
+# Vaginal ring
+df <- df %>% filter(which_hc != 4 | is.na(which_hc))
+
+# Contraceptive patch
+df <- df %>% filter(which_hc != 5 | is.na(which_hc))
+
+# Contraceptive injection
+df <- df %>% filter(which_hc != 6 | is.na(which_hc))
+
+# Participants who don't track their period
+df <- df %>% filter(track_period != 3 | is.na(track_period))
+
+# Participants who don´t know which period phase
+df <- df %>% filter(period_phase != 5 |  is.na(period_phase)) 
+
+# If more than 35 days since last period 
+df <- df %>% filter(days_since_last_period <35 | is.na(days_since_last_period))
+
+# Removing answers that are 1 or 2 (where 1 is less than a month and two is 1-3 months) 
+df <- df %>% filter(!(how_long_since_hc_before %in% c(1, 2)) | is.na(how_long_since_hc_before)) 
+
+# Removing HC under 3 months (2 means checked off)
+df <- df%>% filter(hc_less_three_months !=2 | is.na(hc_less_three_months)) 
+```
+
+
+```{r}
+# Seeing how many answered it one, two and three times
+table(df$answer_round)   
+ 
+# Removing second and third round answers
+df <- df %>% filter(answer_round == 1)
+
+# IMPORTANT NOTE: to see the results including all three rounds, the code line above can be commented out and the analysis can be carried out by including minor changes in the model, suggested by the comments
+```
+   
+ 
+```{r}
+# Checking that only the first answer round is present in df 
+table(df$answer_round)  
+```
+  
+## Checking distribition of the responses    
+
+```{r}
+# Checking the distribution of HC types 
+table(df$which_hc) # 1 is COC here
+ 
+# Checking the distribution of NC cycle phases  
+table(df$period_phase)   
+```
+ 
+```{r}
+# Number of participants on HC and not on HC (NC) 
+hc_n <- sum(df$on_off_hc == 2, na.rm = TRUE)  
+hc_y <- sum(df$on_off_hc == 1, na.rm = TRUE)  
+cat("Number of participants on HC:", hc_y, "\n")
+cat("Number of participants not on HC:", hc_n, "\n") 
+
+# Number of responses per specific value in column CC02/which_hc   
+antal_1 <- sum(df$which_hc == 1, na.rm = TRUE)  
+antal_2 <- sum(df$which_hc == 2, na.rm = TRUE)
+antal_3 <- sum(df$which_hc == 3, na.rm = TRUE)  
+    
+# Showing the results   
+cat("Number of participants on COC:", antal_1, "\n")
+cat("Number of participants on LNG-IUD:", antal_2, "\n")
+cat("Number of participants on POP:", antal_3, "\n")   
+``` 
+```{r}
+# Overview of the participants' level of education  
+a_1 <- sum(df$education_level == 1, na.rm = TRUE) 
+a_2 <- sum(df$education_level == 2, na.rm = TRUE) 
+a_3 <- sum(df$education_level == 3, na.rm = TRUE)
+a_4 <- sum(df$education_level == 4, na.rm = TRUE)
+a_5 <- sum(df$education_level == 5, na.rm = TRUE)
+a_6 <- sum(df$education_level == 6, na.rm = TRUE)    
+
+# Showing the results    
+cat("Number of responses for 1 (Elementary school):", a_1, "\n")
+cat("Number of responses for 2 (High School/vocational qualification):", a_2, "\n")
+cat("Number of responses for 3 (2-2½ years,short further education):", a_3, "\n")
+cat("Number of responses for 4 (3-4 years, medium-cycle higher education):", a_4, "\n")
+cat("Number of responses for 5 (5-6 years,long further education):", a_5, "\n")
+cat("Number of responses for 6 (PhD):", a_6, "\n")
+```
+ 
+```{r}
+# Overview of the participants' with mental disorders and not with disorders 
+an_1 <- sum(df$any_mental_disorder == 1, na.rm = TRUE) 
+an_2 <- sum(df$any_mental_disorder == 2, na.rm = TRUE) 
+an_3 <- sum(df$any_mental_disorder == 3, na.rm = TRUE)
+
+# Showing the results   
+cat("Number of participants who ARE currently diagnosed with a mental health disorder:", an_1, "\n")
+cat("Number of participants who are NOT diagnosed with a mental health disorder:", an_2, "\n")
+cat("Number of participants who don't want to answer this question:", an_3, "\n")
+```
+
+```{r}
+# Overview of the participants' different mental disorders
+an_4 <- sum(df$depression == 2, na.rm = TRUE) # 2 = checked
+an_5 <- sum(df$anxiety == 2, na.rm = TRUE)
+an_6 <- sum(df$ocd == 2, na.rm = TRUE)   
+an_7 <- sum(df$adhd_add == 2, na.rm = TRUE)
+an_8 <- sum(df$autism == 2, na.rm = TRUE)
+an_9 <- sum(df$schizophrenia == 2, na.rm = TRUE)   
+an_10 <- sum(df$ptsd == 2, na.rm = TRUE) 
+an_11 <- sum(df$other_disorders == 2, na.rm = TRUE)   
+
+# Showing the results   
+cat("Number of participants with depression:", an_4, "\n")
+cat("Number of participants with an anxiety disorder:", an_5, "\n")
+cat("Number of participants with OCD:", an_6, "\n")
+cat("Number of participants with ADHD/ADD:", an_7, "\n")
+cat("Number of participants with Autism:", an_8, "\n")
+cat("Number of participants with Schizophrenia:", an_9, "\n")
+cat("Number of participants with PTSD:", an_10, "\n") 
+cat("Number of participants with another disorder:", an_11, "\n")
+```
+
+# Preparing analysis   
+  
+## Calculate empathy scores (r after empathy = reversed)
+
+```{r}
+# In all empathy scores, change 1 to 0, 2 to 1, 3 to 2, 4 to 3, 5 to 4, 6 to 5.
+df <- df %>% 
+  mutate(across(starts_with("empathy_q"), ~ recode(.x, `1` = 0, `2` = 1, `3` = 2, `4` = 3, `5` = 4)))
+ 
+# Reverse the scores with r in the end
+df <- df %>%
+  mutate(across(ends_with("_r"), ~ recode(.x, `0` = 4, `1` = 3, `2` = 2, `3` = 1, `4` = 0))) 
+
+# Add a new column with empathy score by using sum
+df$empathy_score <- rowSums(df[, c("empathy_q2", "empathy_q3_r", "empathy_q4_r", "empathy_q6", "empathy_q8", "empathy_q9", "empathy_q10", "empathy_q11", "empathy_q13_r", "empathy_q14_r", "empathy_q15_r", "empathy_q17", "empathy_q18_r", "empathy_q19_r", "empathy_q20", "empathy_q21", "empathy_q22", "empathy_q24", "empathy_q25", "empathy_q27", "empathy_q28")], na.rm = TRUE)   
+```
+
+## Calculate the well-being scores 
+
+```{r}
+# Reverse scores so that 1 becomes 5, 2 becomes 4, 3 becomes 3, 4 becomes 2, 5 becomes 1, 6 becomes 0 
+df <- df %>%
+  mutate(wellbeing_q1 = recode(wellbeing_q1, `1` = 5, `2` = 4, `3` = 3, `4` = 2, `5` = 1, `6` = 0)) 
+
+# Add new column with well-being score by using sum 
+df$wellbeing_score <- rowSums(df[, c("wellbeing_q1", "wellbeing_q2", "wellbeing_q3", "wellbeing_q4", "wellbeing_q5")], na.rm = TRUE)
+```
+
+## Add correct/incorrect  
+
+```{r}
+# Changing the rows in emotion recognition task columns, to either 1 (correct answer) or 0 (incorrect answers) 
+df_correct <- df %>%
+  mutate(AA13 = ifelse(AA13 == 3, 1, 0),
+         AA16 = ifelse(AA16 == 5, 1, 0),
+         AA17 = ifelse(AA17 == 6, 1, 0),
+         AA18 = ifelse(AA18 == 4, 1, 0),
+         AA15 = ifelse(AA15 == 2, 1, 0),
+         AA14 = ifelse(AA14 == 1, 1, 0),
+         AA19 = ifelse(AA19 == 1, 1, 0),
+         AA20 = ifelse(AA20 == 2, 1, 0),
+         AA21 = ifelse(AA21 == 3, 1, 0),
+         AA22 = ifelse(AA22 == 6, 1, 0),
+         AA23 = ifelse(AA23 == 4, 1, 0),
+         AA24 = ifelse(AA24 == 5, 1, 0),
+         AA25 = ifelse(AA25 == 1, 1, 0),
+         AA26 = ifelse(AA26 == 2, 1, 0),
+         AA27 = ifelse(AA27 == 3, 1, 0),
+         AA28 = ifelse(AA28 == 6, 1, 0),
+         AA29 = ifelse(AA29 == 4, 1, 0),
+         AA30 = ifelse(AA30 == 5, 1, 0),
+         AA31 = ifelse(AA31 == 1, 1, 0),
+         AA32 = ifelse(AA32 == 2, 1, 0),
+         AA33 = ifelse(AA33 == 3, 1, 0),
+         AA34 = ifelse(AA34 == 6, 1, 0),
+         AA35 = ifelse(AA35 == 4, 1, 0),
+         AA36 = ifelse(AA36 == 5, 1, 0),
+         AA37 = ifelse(AA37 == 1, 1, 0),
+         AA38 = ifelse(AA38 == 2, 1, 0),
+         AA39 = ifelse(AA39 == 3, 1, 0),
+         AA40 = ifelse(AA40 == 6, 1, 0),
+         AA41 = ifelse(AA41 == 4, 1, 0),
+         AA42 = ifelse(AA42 == 5, 1, 0),
+         AA43 = ifelse(AA43 == 1, 1, 0),
+         AA44 = ifelse(AA44 == 2, 1, 0),
+         AA45 = ifelse(AA45 == 3, 1, 0),
+         AA46 = ifelse(AA46 == 6, 1, 0),
+         AA47 = ifelse(AA47 == 4, 1, 0),
+         AA48 = ifelse(AA48 == 5, 1, 0),
+         AA49 = ifelse(AA49 == 1, 1, 0),
+         AA50 = ifelse(AA50 == 2, 1, 0),
+         AA51 = ifelse(AA51 == 3, 1, 0),
+         AA52 = ifelse(AA52 == 6, 1, 0),
+         AA53 = ifelse(AA53 == 4, 1, 0),
+         AA54 = ifelse(AA54 == 5, 1, 0),
+         AA55 = ifelse(AA55 == 1, 1, 0),
+         AA56 = ifelse(AA56 == 2, 1, 0),
+         AA57 = ifelse(AA57 == 3, 1, 0),
+         AA58 = ifelse(AA58 == 6, 1, 0),
+         AA59 = ifelse(AA59 == 4, 1, 0),
+         AA60 = ifelse(AA60 == 5, 1, 0),
+         AA61 = ifelse(AA61 == 1, 1, 0),
+         AA62 = ifelse(AA62 == 2, 1, 0),
+         AA63 = ifelse(AA63 == 3, 1, 0),
+         AA64 = ifelse(AA64 == 6, 1, 0),
+         AA65 = ifelse(AA65 == 4, 1, 0),
+         AA66 = ifelse(AA66 == 5, 1, 0),
+         AA67 = ifelse(AA67 == 1, 1, 0),
+         AA68 = ifelse(AA68 == 2, 1, 0),
+         AA69 = ifelse(AA69 == 3, 1, 0),
+         AA70 = ifelse(AA70 == 6, 1, 0),
+         AA71 = ifelse(AA71 == 4, 1, 0),
+         AA72 = ifelse(AA72 == 5, 1, 0))
+
+
+
+# Adding a correct-answers column for emotion recognition task
+df_correct$sum_correct <- rowSums(df_correct[, c("AA13", "AA16", "AA17", "AA18", "AA15", "AA14", "AA19", "AA20", "AA21", "AA22", "AA23", "AA24", "AA25", "AA26", "AA27", "AA28", "AA29", "AA30", "AA31", "AA32", "AA33", "AA34", "AA35", "AA36", "AA37", "AA38", "AA39", "AA40", "AA41", "AA42", "AA43", "AA44", "AA45", "AA46", "AA47", "AA48", "AA49", "AA50", "AA51", "AA52", "AA53", "AA54", "AA55", "AA56", "AA57", "AA58", "AA59", "AA60", "AA61", "AA62", "AA63", "AA64", "AA65", "AA66", "AA67", "AA68", "AA69", "AA70", "AA71", "AA72")], na.rm = TRUE)
+```
+
+ 
+## Name the stimuli columns 
+
+```{r}
+# Name the stimuli columns
+df_emotions_correct <- df_correct %>% rename(
+    hap_20_m = "AA13",
+    sur_20_m = "AA16",
+    fea_20_m = "AA17",
+    sad_20_m = "AA18",
+    dis_20_m = "AA15",
+    ang_20_m = "AA14",
+    ang_20_f = "AA19",
+    dis_20_f = "AA20",
+    hap_20_f = "AA21",
+    fea_20_f = "AA22",
+    sad_20_f = "AA23",
+    sur_20_f = "AA24",
+    ang_40_m = "AA25",
+    dis_40_m = "AA26",
+    hap_40_m = "AA27",
+    fea_40_m = "AA28",
+    sad_40_m = "AA29",
+    sur_40_m = "AA30",
+    ang_40_f = "AA31",
+    dis_40_f = "AA32",
+    hap_40_f = "AA33",
+    fea_40_f = "AA34",
+    sad_40_f = "AA35",
+    sur_40_f = "AA36",
+    ang_60_m = "AA37",
+    dis_60_m = "AA38",
+    hap_60_m = "AA39",
+    fea_60_m = "AA40",
+    sad_60_m = "AA41",
+    sur_60_m = "AA42",
+    ang_60_f = "AA43",
+    dis_60_f = "AA44",
+    hap_60_f = "AA45",
+    fea_60_f = "AA46",
+    sad_60_f = "AA47",
+    sur_60_f = "AA48",
+    ang_80_m = "AA49",
+    dis_80_m = "AA50",
+    hap_80_m = "AA51",
+    fea_80_m = "AA52",
+    sad_80_m = "AA53",
+    sur_80_m = "AA54",
+    ang_80_f = "AA55",
+    dis_80_f = "AA56",
+    hap_80_f = "AA57",
+    fea_80_f = "AA58",
+    sad_80_f = "AA59",
+    sur_80_f = "AA60",
+    ang_100_m = "AA61",
+    dis_100_m = "AA62",
+    hap_100_m = "AA63",
+    fea_100_m = "AA64",
+    sad_100_m = "AA65",
+    sur_100_m = "AA66",
+    ang_100_f = "AA67",
+    dis_100_f = "AA68",
+    hap_100_f = "AA69",
+    fea_100_f = "AA70",
+    sad_100_f = "AA71", 
+    sur_100_f = "AA72"
+) 
+```
+
+ 
+## More cleaning         
+
+```{r}
+# Change the numbers in which hc to the actual names
+df_emotions_correct$which_hc <- recode(df_emotions_correct$which_hc, "1" = "COC", "2" = "LNG-IUD", "3" = "POP")
+
+# Change the phases to the actual names, 1 = MP, 2 = LFP, 4 = OP, 3 = LP, 5 = I don't know
+df_emotions_correct$period_phase <- recode(df_emotions_correct$period_phase, "1" = "MP", "2" = "LFP", "4" = "OP", "3" = "LP", "5" = "dont_know")
+   
+
+# Create a new column that combines 'which_hc' and 'period_phase'
+df_emotions_correct$combined_hc_phase <- ifelse(!is.na(df_emotions_correct$which_hc), 
+                                    df_emotions_correct$which_hc, 
+                                    df_emotions_correct$period_phase) 
+
+df_emotions_correct$type_of_COC <- recode(df_emotions_correct$type_of_COC, "1" = "mono", "2" = "multi", "3" = "dont_know")
+
+
+# Convert the new combined column to a factor 
+df_emotions_correct$combined_hc_phase <- as.factor(df_emotions_correct$combined_hc_phase)
+df_emotions_correct$any_mental_disorder <- as.factor(df_emotions_correct$any_mental_disorder)
+df_emotions_correct$which_mental_disorder <- as.factor(df_emotions_correct$which_mental_disorder)
+df_emotions_correct$combined_hc_phase <- as.factor(df_emotions_correct$combined_hc_phase)
+df_emotions_correct$education_level <- as.factor(df_emotions_correct$education_level)
+df_emotions_correct$which_hc <- as.factor(df_emotions_correct$which_hc)
+df_emotions_correct$period_phase <- as.factor(df_emotions_correct$period_phase)
+df_emotions_correct$age <- as.numeric(df_emotions_correct$age)
+```
+ 
+  
+# Finding mean and sd for the different groups
+ 
+```{r} 
+# Showing participants ages  
+table(df$age) 
+```
+
+ 
+```{r} 
+# Finding mean age of the groups, HC, no HC (NC), LNG-IUD, COC, POP, MP, LFP, OP, LP
+
+mean(df_emotions_correct$age[df$on_off_hc == 1]) #on HC
+sd(df_emotions_correct$age[df$on_off_hc == 1])
+
+mean(df_emotions_correct$age[df$on_off_hc == 2]) #not on HC
+sd(df_emotions_correct$age[df$on_off_hc == 2]) 
+
+
+mean(df_emotions_correct$age[df_emotions_correct$which_hc == "COC"], na.rm = TRUE) #COC
+sd(df_emotions_correct$age[df_emotions_correct$which_hc == "COC"], na.rm = TRUE)
+
+mean(df_emotions_correct$age[df_emotions_correct$which_hc == "LNG-IUD"], na.rm = TRUE) #LNG-IUD
+sd(df_emotions_correct$age[df_emotions_correct$which_hc == "LNG-IUD"], na.rm = TRUE)
+
+mean(df_emotions_correct$age[df_emotions_correct$which_hc == "POP"], na.rm = TRUE) #POP
+sd(df_emotions_correct$age[df_emotions_correct$which_hc == "POP"], na.rm = TRUE)
+
+
+mean(df_emotions_correct$age[df_emotions_correct$period_phase == "MP"], na.rm = TRUE) #MP
+sd(df_emotions_correct$age[df_emotions_correct$period_phase == "MP"], na.rm = TRUE)
+
+mean(df_emotions_correct$age[df_emotions_correct$period_phase == "LFP"], na.rm = TRUE) #LFP
+sd(df_emotions_correct$age[df_emotions_correct$period_phase == "LFP"], na.rm = TRUE)
+
+mean(df_emotions_correct$age[df_emotions_correct$period_phase == "OP"], na.rm = TRUE) #OP
+sd(df_emotions_correct$age[df_emotions_correct$period_phase == "OP"], na.rm = TRUE)
+
+mean(df_emotions_correct$age[df_emotions_correct$period_phase == "LP"], na.rm = TRUE) #LP
+sd(df_emotions_correct$age[df_emotions_correct$period_phase == "LP"], na.rm = TRUE)
+```
+
+```{r}
+# Finding mean and sd for population
+mean(df_emotions_correct$age) 
+sd(df_emotions_correct$age) 
+```
+
+
+## Calculate sum for each emotion (for control regressions) 
+
+```{r} 
+# Calculate the sum for each emotions
+
+# sum_hap  
+df_emotions_correct$sum_hap <- rowSums(df_emotions_correct %>% select(starts_with("hap_")), na.rm = TRUE)
+
+# sum_ang
+df_emotions_correct$sum_ang <- rowSums(df_emotions_correct %>% select(starts_with("ang_")), na.rm = TRUE)
+
+# sum_dis
+df_emotions_correct$sum_dis <- rowSums(df_emotions_correct %>% select(starts_with("dis_")), na.rm = TRUE)
+
+# sum_fea
+df_emotions_correct$sum_fea <- rowSums(df_emotions_correct %>% select(starts_with("fea_")), na.rm = TRUE)
+
+#sum_sad 
+df_emotions_correct$sum_sad <- rowSums(df_emotions_correct %>% select(starts_with("sad_")), na.rm = TRUE)
+
+# sum_sur
+df_emotions_correct$sum_sur <- rowSums(df_emotions_correct %>% select(starts_with("sur_")), na.rm = TRUE)
+```
+
+
+## Calculate sum for each intensity
+
+```{r}
+# Calculate the sum for each intensity 
+
+# Intensity 20%
+df_emotions_correct$sum_20 <- rowSums(df_emotions_correct %>% select(contains("_20_")), na.rm = TRUE)
+
+# Intensity 40%
+df_emotions_correct$sum_40 <- rowSums(df_emotions_correct %>% select(contains("_40_")), na.rm = TRUE)
+
+# Intensity 60%
+df_emotions_correct$sum_60 <- rowSums(df_emotions_correct %>% select(contains("_60_")), na.rm = TRUE)
+
+# Intensity 80%
+df_emotions_correct$sum_80 <- rowSums(df_emotions_correct %>% select(contains("_80_")), na.rm = TRUE)
+
+# Intensity 100%
+df_emotions_correct$sum_100 <- rowSums(df_emotions_correct %>% select(contains("_100_")), na.rm = TRUE)
+```
+
+  
+# Finding mean and sd of WHO-5 scores (wellbeing), IRI-scores (empathy) and mood-scores for on/off HC groups
+
+```{r}
+#Finding mean and sd of WHO-5 scores, IRI-scores and mood-scores for on/off HC groups
+
+# Mean and sd for WHO-5 scores (on/off HC)
+
+mean(df_emotions_correct$wellbeing_score[df_emotions_correct$on_off_hc == 1]) #on HC
+sd(df_emotions_correct$wellbeing_score[df_emotions_correct$on_off_hc == 1]) #on HC
+
+mean(df_emotions_correct$wellbeing_score[df_emotions_correct$on_off_hc == 2]) #off HC
+sd(df_emotions_correct$wellbeing_score[df_emotions_correct$on_off_hc == 2]) #off HC
+
+
+# Mean and sd for IRI scores (on/off HC)
+
+mean(df_emotions_correct$empathy_score[df_emotions_correct$on_off_hc == 1]) #on HC
+sd(df_emotions_correct$empathy_score[df_emotions_correct$on_off_hc == 1]) #on HC
+
+mean(df_emotions_correct$empathy_score[df_emotions_correct$on_off_hc == 2]) #off HC
+sd(df_emotions_correct$empathy_score[df_emotions_correct$on_off_hc == 2]) #off HC
+
+
+# Mean and sd for mood scores (on/off HC)
+
+mean(df_emotions_correct$mood_slider[df_emotions_correct$on_off_hc == 1]) #on HC
+sd(df_emotions_correct$mood_slider[df_emotions_correct$on_off_hc == 1]) #on HC
+
+mean(df_emotions_correct$mood_slider[df_emotions_correct$on_off_hc == 2]) #off HC
+sd(df_emotions_correct$mood_slider[df_emotions_correct$on_off_hc == 2]) #off HC
+```
+
+
+# Statistical analysis
+
+# Control regressions
+
+## Control on education 
+
+```{r} 
+# Ensure `education_level` is an ordered factor
+df_emotions_correct$education_level <- factor(df_emotions_correct$education_level,
+                             levels = c("2", "3", "4", "5"),
+                             ordered = TRUE) 
+
+# Ensure `combined_hc_phase` is a nominal (unordered) factor
+df_emotions_correct$combined_hc_phase <- factor(df_emotions_correct$combined_hc_phase)
+
+# Fit the ordinal logistic regression model
+cm_education <- polr(education_level ~ combined_hc_phase, data = df_emotions_correct, Hess = TRUE)
+
+# Anova test (important that Anova with uppercase A, there is a difference)
+Anova(cm_education)
+```
+  
+## Control on the rest    
+
+```{r}
+# Control regressions   
+cm_empathy <- glm(empathy_score ~ combined_hc_phase, 
+               data = df_emotions_correct,  
+               family = gaussian) 
+
+cm_wellbeing <- glm(wellbeing_score ~ combined_hc_phase, 
+               data = df_emotions_correct,  
+               family = gaussian)
+
+cm_mood <- glm(mood_slider ~ combined_hc_phase, 
+               data = df_emotions_correct,  
+               family = gaussian)      
+
+cm_any_disorder <- glm(any_mental_disorder ~ combined_hc_phase, 
+               data = df_emotions_correct,  
+               family = binomial)
+
+cm_age <- glm(age ~ combined_hc_phase, 
+               data = df_emotions_correct,   
+               family = gaussian) 
+
+cm_which_disorder <- multinom(which_mental_disorder ~ combined_hc_phase, 
+                data = df_emotions_correct) 
+
+
+# Checking for statistically significance on control regressions 
+
+# Likelihood ratio test, checks for significance in cm_which_disorder because it is multinom
+cm_which_disorder_0 <- multinom(which_mental_disorder~1, data = df_emotions_correct)
+
+anova(cm_which_disorder_0, cm_which_disorder) # p-value is 0.12, which is greater than 0.05 and therefore not significant
+
+# Anova (as omnibustests)  
+anova(cm_empathy, test = "F") # this is F-test because family=gaussian
+anova(cm_wellbeing, test = "F")
+anova(cm_mood, test = "F")
+anova(cm_any_disorder, test = "Chisq") # this is chisq-test because family=binomial
+anova(cm_age, test = "F")  
+
+# Results
+# None of the above control regression models are significant 
+```
+   
+**Results**
+
+```{r}
+# overview of the different groups
+table(df_emotions_correct$any_mental_disorder, df_emotions_correct$combined_hc_phase)
+table(df_emotions_correct$which_mental_disorder, df_emotions_correct$combined_hc_phase)
+table(df_emotions_correct$age, df_emotions_correct$combined_hc_phase)
+table(df_emotions_correct$which_hc)
+table(df_emotions_correct$type_of_COC)
+table(df_emotions_correct$active_inactive_hc) 
+```
+  
+
+# Cleaning 
+ 
+## Changing df to long format
+
+```{r}
+#trying to change the data to long format 
+df_long <- df_emotions_correct %>% 
+  pivot_longer(
+    cols = matches("^(hap_|sad_|dis_|ang_|sur_|fea_)"),  
+    names_to = "face",
+    values_to = "outcome"
+  ) %>%
+  separate(face, into = c("emotion", "intensity", "gender"), sep = "_")
+```
+
+## More cleaning 
+
+```{r}
+#changing id, intensity and emotion to factors 
+df_long$id <- as.factor(df_long$id)
+df_long$intensity <- factor(df_long$intensity, levels = c(20, 40, 60, 80, 100))
+df_long$emotion <- as.factor(df_long$emotion)
+df_long$on_off_hc <- as.factor(df_long$on_off_hc)
+
+#turn all na values into 1 in the column answer_round
+df_long$answer_round[is.na(df_long$answer_round)] <- 1
+ 
+#making the outcome a factor instead of numeric with range from 0-1
+df_long$outcome <- as.factor(df_long$outcome)
+
+# Convert the new combined column to a factor 
+df_long$combined_hc_phase <- factor(df_long$combined_hc_phase)
+
+# Check the new column 
+table(df_long$combined_hc_phase)
+```
+   
+# Step 1: Test our experiment (effect of difficulty) 
+
+```{r}
+# Tests whether the intensity makes a difference
+m1 <- glmer(outcome ~ intensity + (1|id), 
+               data = df_long, 
+               family = binomial) 
+summary(m1) 
+```
+
+
+# Step 2: test our hypotheses 
+
+## Testing hypotheses 1 and 2 (without intensity and emotion) 
+
+  
+### Hypothesis 1: hc vs. natural cycle 
+
+```{r}
+# HC vs. cycle 
+h1 <- glmer(outcome ~ on_off_hc + (1|id), 
+               data = df_long,  
+               family = binomial) 
+summary(h1)
+```
+
+
+### Hypothesis 2: COC, POP, LNG-IUD vs natural cycle
+
+```{r}
+# Testing h2
+h234 <- glmer(outcome ~ combined_hc_phase + (1|id), 
+               data = df_long, 
+               family = binomial)  
+  
+summary(h234)   
+ 
+# Pairwise comparison
+h234_comparisons <- emmeans(h234, pairwise ~ combined_hc_phase)
+
+# View the pairwise contrasts among all emotion levels
+print(h234_comparisons$contrasts) 
+```
+ 
+## Testing hypotheses 1 and 2 + 3 and 4 (same models as before with intensity and emotion)
+
+### Hypothesis 1 + 3: hc vs. natural cycle, with intensity
+
+```{r}
+# HC vs. cycle + intensity 
+h1_7 <- glmer(outcome ~ on_off_hc * intensity + (1|id), 
+               data = df_long, 
+               family = binomial, 
+              control = glmerControl(optimizer = "bobyqa")) 
+
+summary(h1_7)
+```
+
+
+# Hypothesis: 2 + 3 (with intensity)  
+COC vs cycle, IUD vs COC vs cycle, cycle phase vs cycle phase
+
+```{r}
+# h2 with intensity 
+h234_7 <- glmer(outcome ~ combined_hc_phase * intensity + (1|id), 
+               data = df_long, 
+               family = binomial , control = glmerControl(optimizer = "bobyqa"))  
+
+#pairwise comparison
+h234_7_comparisons <- emmeans(h234_7, ~ combined_hc_phase * intensity)
+
+# View the pairwise contrasts among all intensity levels
+print(h234_7_comparisons$contrasts)  
+```
+
+
+```{r}
+contrasts_by_intensity <- contrast(h234_7_comparisons, interaction = "pairwise", by = "intensity") 
+print(contrasts_by_intensity)
+```
+
+
+### Hypotese 1 + 4: hc vs. natural cycle, with emotion 
+
+```{r}
+# HC vs. cycle + emotion  
+h1_6 <- glmer(outcome ~ on_off_hc * emotion + (1|id), 
+               data = df_long, 
+               family = binomial, 
+              control = glmerControl(optimizer = "bobyqa")) 
+
+summary(h1_6)  
+```
+
+ 
+# Hypotese: 2 + 4 (with emotion) 
+COC vs cycle, IUD vs COC vs cycle, cycle phase vs cycle phase 
+
+```{r}
+# h2 with emotion
+h234_6 <- glmer(outcome ~ combined_hc_phase * emotion + (1|id), 
+               data = df_long, 
+               family = binomial , control = glmerControl(optimizer = "bobyqa"))   
+  
+#pairwise comparison
+h234_6_comparisons <- emmeans(h234_6, ~ combined_hc_phase * emotion)
+
+# View the pairwise contrasts among all emotions
+print(h234_6_comparisons$contrasts) 
+```
+
+
+```{r}
+contrasts_by_emotion <- contrast(h234_6_comparisons, interaction = "pairwise", by = "emotion")
+print(contrasts_by_emotion)
+```
+
